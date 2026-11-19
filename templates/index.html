@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simple Flask Web Scraper</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <p class="eyebrow">PYTHON • FLASK • BEAUTIFULSOUP</p>
+      <h1>Simple Web Scraper</h1>
+      <p class="subtitle">Enter a public webpage URL to extract its title, headings, paragraphs and links.</p>
+    </header>
+
+    <form id="scrape-form">
+      <label for="url">Website URL</label>
+      <div class="input-row">
+        <input id="url" name="url" type="url" placeholder="https://example.com" required>
+        <button id="submit-button" type="submit">Scrape page</button>
+      </div>
+      <p class="hint">Use public pages that permit automated access. Scraping is subject to each website's terms and robots.txt rules.</p>
+    </form>
+
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="results" class="results" hidden>
+      <div class="summary">
+        <div><span id="heading-count">0</span><small>Headings</small></div>
+        <div><span id="paragraph-count">0</span><small>Paragraphs</small></div>
+        <div><span id="link-count">0</span><small>Links</small></div>
+      </div>
+      <article class="panel">
+        <h2 id="page-title"></h2>
+        <p id="page-description" class="description"></p>
+        <p id="page-url" class="page-url"></p>
+      </article>
+      <article class="panel"><h2>Headings</h2><div id="headings"></div></article>
+      <article class="panel"><h2>Paragraphs</h2><div id="paragraphs"></div></article>
+      <article class="panel"><h2>Links</h2><ul id="links"></ul></article>
+      <button id="download-button" class="secondary" type="button">Download JSON</button>
+    </section>
+    <footer>Learning project • Flask + Requests + BeautifulSoup</footer>
+  </main>
+  <script>
+    const form = document.querySelector('#scrape-form');
+    const statusBox = document.querySelector('#status');
+    const results = document.querySelector('#results');
+    const submitButton = document.querySelector('#submit-button');
+    let latestResult = null;
+
+    function addTextElement(parent, tag, text, className = '') {
+      const element = document.createElement(tag);
+      element.textContent = text;
+      if (className) element.className = className;
+      parent.appendChild(element);
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      results.hidden = true;
+      statusBox.textContent = 'Scraping page...';
+      submitButton.disabled = true;
+      try {
+        const response = await fetch('/scrape', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: document.querySelector('#url').value})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Scraping failed.');
+        latestResult = data;
+
+        document.querySelector('#page-title').textContent = data.title;
+        document.querySelector('#page-description').textContent = data.description || 'No description found.';
+        document.querySelector('#page-url').textContent = data.url;
+        document.querySelector('#heading-count').textContent = data.counts.headings;
+        document.querySelector('#paragraph-count').textContent = data.counts.paragraphs;
+        document.querySelector('#link-count').textContent = data.counts.links;
+
+        const headings = document.querySelector('#headings');
+        headings.replaceChildren();
+        for (const [level, values] of Object.entries(data.headings)) {
+          for (const value of values) addTextElement(headings, 'p', `${level.toUpperCase()}: ${value}`);
+        }
+        if (!headings.childElementCount) addTextElement(headings, 'p', 'No headings found.');
+
+        const paragraphs = document.querySelector('#paragraphs');
+        paragraphs.replaceChildren();
+        data.paragraphs.forEach(text => addTextElement(paragraphs, 'p', text));
+        if (!paragraphs.childElementCount) addTextElement(paragraphs, 'p', 'No paragraphs found.');
+
+        const links = document.querySelector('#links');
+        links.replaceChildren();
+        data.links.forEach(item => {
+          const li = document.createElement('li');
+          const anchor = document.createElement('a');
+          anchor.textContent = item.text;
+          anchor.href = item.url;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
+          li.appendChild(anchor);
+          links.appendChild(li);
+        });
+        if (!links.childElementCount) addTextElement(links, 'li', 'No links found.');
+
+        results.hidden = false;
+        statusBox.textContent = 'Scraping completed.';
+      } catch (error) {
+        statusBox.textContent = error.message;
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+    document.querySelector('#download-button').addEventListener('click', () => {
+      if (!latestResult) return;
+      const blob = new Blob([JSON.stringify(latestResult, null, 2)], {type: 'application/json'});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'scraped-data.json';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+  </script>
+</body>
+</html>
